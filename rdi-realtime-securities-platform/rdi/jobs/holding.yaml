@@ -1,0 +1,22 @@
+# =====================================================================
+# RDI Job: portfolio.holding  ->  Redis JSON
+# Key pattern:  holding:{customer_id}:{security_id}
+#
+# This is the most read structure on the platform - every time the
+# investor opens the "My Portfolio" screen we hit this key.
+# The mark-to-market value is computed by the app by combining this
+# JSON with the live security:{symbol} hash. RDI keeps both in sync.
+# =====================================================================
+source:
+  server_name: hdfcsec
+  schema: portfolio
+  table: holding
+
+output:
+  - uses: redis.write
+    with:
+      connection: target
+      data_type: json
+      key:
+        expression: concat(['holding:', to_string(customer_id), ':', to_string(security_id)])
+        language: jmespath

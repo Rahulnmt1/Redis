@@ -1,0 +1,266 @@
+# =====================================================================
+# HDFC Securities - RDI Demo Stack (local laptop, Docker only)
+#
+#  System of record  : PostgreSQL  (stand-in for HDFC Sec's Oracle)
+#  Cache             : Redis Enterprise (target the broker app reads)
+#  CDC engine        : Debezium Server (the same engine inside real RDI)
+#  Stream processor  : rdi-processor (reference impl of RDI's processor)
+#  Pipeline UI       : Redis Insight  (real RDI customers use this)
+#  Live UI           : Portfolio dashboard (Flask)
+#
+# In a true RDI install on a VM/K8s, Debezium + the processor are
+# bundled, managed by the RDI operator and observable via Prometheus +
+# Redis Insight. Locally we run the same components un-bundled so the
+# customer can see what happens under the hood end-to-end.
+# =====================================================================
+
+services:
+
+  # ---------------------------------------------------------------
+  # 1) Source: PostgreSQL pre-loaded with HDFC Sec portfolio schema
+  # ---------------------------------------------------------------
+  postgres:
+    build: ./docker/postgres
+    image: hdfcsec/portfolio-pg:demo
+    container_name: hdfcsec-postgres
+    # Auto-restart everything that's a long-running daemon. `unless-stopped`
+    # respects `docker compose stop` / `down` (used by teardown.sh) but
+    # brings the container back if it crashes or if the host is rebooted
+    # while Docker Desktop is set to start on login. This is the second
+    # line of defence; the first is each component's own error handling
+    # (e.g. the connection-retry wrapper in rdi-processor/processor.py).
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: postgres
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
+      - "-c"
+      - "max_wal_senders=10"
+      - "-c"
+      - "max_replication_slots=10"
+      # ---- low-latency tuning for the architect demo ----------------
+      # wal_writer_delay controls how often the WAL writer flushes the
+      # buffer to disk. The default 200 ms was the dominant tail in our
+      # CDC pickup measurements; 10 ms flushes early enough that the
+      # logical wal_sender can ship each commit to Debezium in single-
+      # digit-millisecond range.
+      - "-c"
+      - "wal_writer_delay=10ms"
+      # Force the wal_sender to send keepalives every 1 s and stay hot,
+      # so the streaming socket is never in deep sleep when a fresh
+      # transaction commits after an idle period.
+      - "-c"
+      - "wal_sender_timeout=60s"
+      - "-c"
+      - "wal_keep_size=64MB"
+      # Don't sit on a commit waiting for siblings.
+      - "-c"
+      - "commit_delay=0"
+    ports:
+      # Host port 15432 -> container 5432.  We use a non-default host
+      # port so the demo never collides with a native Postgres on the
+      # presenter's laptop (e.g. Homebrew's postgresql@14).  Inside the
+      # Docker network every other service still talks to postgres:5432.
+      - "15432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hdfcsec"]
+      interval: 4s
+      timeout: 3s
+      retries: 20
+    networks: [rdi-net]
+
+  # ---------------------------------------------------------------
+  # 2) Target: Redis Enterprise (where the trading app reads from)
+  # ---------------------------------------------------------------
+  redis-enterprise:
+    image: redislabs/redis:latest
+    container_name: hdfcsec-redis-enterprise
+    cap_add: [sys_resource]
+    restart: unless-stopped
+    ports:
+      - "8443:8443"     # Cluster Manager UI
+      - "9443:9443"     # REST API
+      - "12000:12000"   # target DB (trading app reads here)
+    networks: [rdi-net]
+
+  # ---------------------------------------------------------------
+  # 3) RDI database - holds CDC streams + pipeline state.
+  #    We use a second small Redis Enterprise container so the
+  #    topology mirrors what RDI does in real life: target DB and
+  #    RDI's own state DB are separate.
+  # ---------------------------------------------------------------
+  redis-rdi:
+    image: redislabs/redis:latest
+    container_name: hdfcsec-redis-rdi
+    cap_add: [sys_resource]
+    restart: unless-stopped
+    ports:
+      - "8444:8443"
+      - "9444:9443"
+      - "12001:12001"   # RDI's internal CDC streams DB
+    networks: [rdi-net]
+
+  # ---------------------------------------------------------------
+  # 4) Bootstrapper - creates the Redis Enterprise clusters and
+  #    the two databases (target on 12000, RDI on 12001).
+  # ---------------------------------------------------------------
+  re-bootstrap:
+    image: curlimages/curl:8.10.1
+    container_name: hdfcsec-re-bootstrap
+    # One-shot — runs to completion (exit 0) and stays Exited. Explicitly
+    # disable any restart policy so docker compose up after a reboot does
+    # NOT re-run bootstrap against an already-formed cluster (which would
+    # fail with "cluster already initialised" 4xx). setup.sh re-runs the
+    # whole stack from scratch via teardown.sh + setup.sh when you want a
+    # clean slate.
+    restart: "no"
+    depends_on: [redis-enterprise, redis-rdi]
+    # BDB sizes are sourced from the project-root .env file (auto-loaded
+    # by docker compose). This is what makes the operator's chosen
+    # cluster sizing survive `teardown.sh && setup.sh` across reboots —
+    # otherwise every fresh bootstrap reverts to the bake-in defaults in
+    # scripts/bootstrap-re.sh. Override on a one-shot basis with
+    # `TARGET_MEM_BYTES=... docker compose up -d` or persistently by
+    # editing .env (see .env.example for the schema).
+    environment:
+      TARGET_MEM_BYTES: "${TARGET_MEM_BYTES:-4294967296}"   # 4 GiB
+      RDI_MEM_BYTES:    "${RDI_MEM_BYTES:-536870912}"       # 512 MiB
+    volumes:
+      - ./scripts/bootstrap-re.sh:/bootstrap.sh:ro
+    entrypoint: ["sh", "/bootstrap.sh"]
+    networks: [rdi-net]
+
+  # ---------------------------------------------------------------
+  # 5) Debezium Server - the CDC collector. Real RDI uses the
+  #    same Debezium engine internally; here we run it directly
+  #    so the demo can show every moving part.
+  # ---------------------------------------------------------------
+  debezium:
+    image: quay.io/debezium/server:2.5
+    container_name: hdfcsec-debezium
+    # Debezium 2.5's Redis stream sink throws a fatal JedisConnectionException
+    # ("Broken pipe") when an idle TCP connection to rdi-state is closed
+    # mid-flight by the broker. Restart so a single transient drop does
+    # not leave the CDC layer dead overnight.
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      re-bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - ./debezium/conf:/debezium/conf:ro
+    networks: [rdi-net]
+
+  # ---------------------------------------------------------------
+  # 6) RDI Stream Processor - applies rdi/jobs/*.yaml to write
+  #    transformed data into the target Redis Enterprise.
+  # ---------------------------------------------------------------
+  rdi-processor:
+    build: ./rdi-processor
+    image: hdfcsec/rdi-processor:demo
+    container_name: hdfcsec-rdi-processor
+    # processor.py wraps XREADGROUP / XACK in retry logic so transient
+    # rdi-state drops don't kill the loop, but if anything ELSE in the
+    # process raises (jobs hot-reload, target writes), Docker brings the
+    # container back rather than leaving the CDC layer silently dead.
+    restart: unless-stopped
+    depends_on:
+      debezium:
+        condition: service_started
+      re-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      RDI_DB_HOST: redis-rdi
+      RDI_DB_PORT: 12001
+      TARGET_DB_HOST: redis-enterprise
+      TARGET_DB_PORT: 12000
+    volumes:
+      # NOTE: jobs volume is RW so the dashboard can patch YAML during
+      # the schema-evolution / multi-shape demos and the processor's
+      # hot-reload picks it up automatically (mirroring real RDI's
+      # `redis-di deploy` flow).
+      - ./rdi/jobs:/rdi/jobs
+    networks: [rdi-net]
+
+  # ---------------------------------------------------------------
+  # 7) Mock RDI control-plane API - implements just enough of the
+  #    real RDI REST API so Redis Insight's "Redis Data Integration"
+  #    tab works end-to-end on a laptop. In production this role is
+  #    played by the RDI installer (VM) or RDI operator (K8s).
+  # ---------------------------------------------------------------
+  rdi-api:
+    build: ./mock-rdi-api
+    image: hdfcsec/mock-rdi-api:demo
+    container_name: hdfcsec-rdi-api
+    restart: unless-stopped
+    depends_on:
+      re-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      RDI_DB_HOST: redis-rdi
+      RDI_DB_PORT: 12001
+      TARGET_DB_HOST: redis-enterprise
+      TARGET_DB_PORT: 12000
+      RDI_CONFIG_DIR: /rdi
+      RDI_API_USER: default
+      RDI_API_PASSWORD: rdi_demo_pass
+      RDI_SERVER_NAME: hdfcsec
+      RDI_VERSION: 1.18.0
+    volumes:
+      - ./rdi:/rdi:ro
+    ports:
+      - "8445:443"     # https://localhost:8445 for smoke-tests
+    networks: [rdi-net]
+
+  # ---------------------------------------------------------------
+  # 8) Redis Insight - the same tool HDFC Sec engineers will use
+  #    to edit, deploy and monitor their pipeline in production.
+  # ---------------------------------------------------------------
+  redis-insight:
+    image: redis/redisinsight:latest
+    container_name: hdfcsec-redis-insight
+    restart: unless-stopped
+    ports:
+      - "5540:5540"
+    networks: [rdi-net]
+
+  # ---------------------------------------------------------------
+  # 8) Portfolio dashboard - what an HDFC Sec investor sees
+  # ---------------------------------------------------------------
+  dashboard:
+    build: ./dashboard
+    image: hdfcsec/portfolio-dashboard:demo
+    container_name: hdfcsec-dashboard
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      re-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      TARGET_DB_HOST: redis-enterprise
+      TARGET_DB_PORT: 12000
+      RDI_DB_HOST: redis-rdi
+      RDI_DB_PORT: 12001
+      PG_HOST: postgres
+      PG_PORT: 5432
+      PG_DB: hdfcsec
+      PG_USER: postgres
+      PG_PASS: postgres
+      RDI_JOBS_DIR: /rdi/jobs
+      RDI_CONFIG_PATH: /rdi/config.yaml
+    volumes:
+      # The dashboard needs RW access so the schema-evolution and
+      # multi-sink-fanout capability cards can patch YAML on disk;
+      # the processor hot-reloads from the same volume.
+      - ./rdi:/rdi
+    ports:
+      - "5050:5000"
+    networks: [rdi-net]
+
+networks:
+  rdi-net:
+    driver: bridge
