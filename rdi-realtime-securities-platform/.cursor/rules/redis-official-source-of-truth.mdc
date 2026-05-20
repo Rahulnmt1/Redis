@@ -1,0 +1,58 @@
+---
+description: Redis official documentation is the single source of truth for every RDI / Redis Enterprise feature, API, and YAML construct demoed in this repo
+alwaysApply: true
+---
+
+# Redis Official Docs Are the Single Source of Truth
+
+This is a customer-facing demo for Securities & Trading Firm. Anything we **show**,
+**claim**, or **configure** in this repo MUST exist in the official Redis
+documentation. If it doesn't, the customer will (rightly) say
+*"that won't work in production"* — and the deal goes cold.
+
+## The rule
+
+Before adding or modifying any RDI feature, API endpoint, YAML key,
+transformation block, JMESPath function, or product claim, **check that
+it appears in the official docs**:
+
+| Surface | Authoritative URL |
+|---|---|
+| RDI overview / features | <https://redis.io/docs/latest/integrate/redis-data-integration/> |
+| RDI architecture | <https://redis.io/docs/latest/integrate/redis-data-integration/architecture/> |
+| `config.yaml` schema | <https://redis.io/docs/latest/integrate/redis-data-integration/reference/config-yaml-reference/> |
+| Job files / transforms | <https://redis.io/docs/latest/integrate/redis-data-integration/data-pipelines/transform-examples/> |
+| Data transformation blocks | <https://redis.io/docs/latest/integrate/redis-data-integration/reference/data-transformation/> |
+| JMESPath custom functions | <https://redis.io/docs/latest/integrate/redis-data-integration/reference/jmespath-custom-functions/> |
+| Control-plane API | <https://redis.io/docs/latest/integrate/redis-data-integration/reference/api-reference/> |
+| CLI (`redis-di`) | <https://redis.io/docs/latest/integrate/redis-data-integration/reference/cli/> |
+| Redis Enterprise | <https://redis.io/docs/latest/operate/rs/> |
+| RedisJSON / RediSearch | <https://redis.io/docs/latest/develop/data-types/json/>, <https://redis.io/docs/latest/develop/interact/search-and-query/> |
+
+## What this means in practice
+
+- **YAML keys** in `rdi/config.yaml` and `rdi/jobs/*.yaml` must be on the
+  current schema. If the schema marks a key *DEPRECATED*, replace or
+  remove it — do not perpetuate it just because the demo "works".
+- **JMESPath functions** must be either in the RDI custom-functions list
+  or the [JMESPath builtins](https://jmespath.org/proposals/functions.html).
+- **API endpoints** added to `mock-rdi-api/app.py` must mirror a real
+  `/api/v1/...` operation; do not invent endpoints Insight could not
+  call against production RDI.
+- **Slide / talk-track / runbook claims** (throughput, HA, DLQ,
+  backpressure, supported sources, etc.) must cite an official doc page.
+- **Reference implementations** (`rdi-processor/`, `mock-rdi-api/`) may
+  implement *less* than the official product but must never implement
+  *more* — i.e. never expose a knob the real product doesn't have.
+
+## When in doubt
+
+1. Read the relevant doc page above first.
+2. Cross-check with [`docs/05-rdi-spec-conformance.md`](../../docs/05-rdi-spec-conformance.md)
+   — the current spec-conformance audit lists every construct in use.
+3. If you genuinely cannot find the feature in the official docs,
+   **don't add it**. Flag it to the demo owner instead.
+
+After any change to `rdi/`, `mock-rdi-api/`, slides, or talk-track,
+update `docs/05-rdi-spec-conformance.md` and re-run
+`./scripts/verify-redis-enterprise.sh` to keep the assurance pack honest.

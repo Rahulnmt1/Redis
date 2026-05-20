@@ -1,0 +1,56 @@
+# =====================================================================
+# RDI Job: portfolio.customer  ->  Redis JSON (+ fan-out sinks)
+#
+# Outputs demonstrated on the same source row:
+#   1) customer:{client_code}           JSON   - the hot-read profile
+#   2) cust-segment:{segment}           SET    - membership index used by
+#                                                segment dashboards (one
+#                                                source row, two Redis
+#                                                shapes — showcases
+#                                                multi-shape fan-out as
+#                                                per the official RDI docs)
+# =====================================================================
+source:
+  server_name: sectrade
+  schema: portfolio
+  table: customer
+
+transform:
+  - uses: rename_field
+    with:
+      from_field: full_name
+      to_field:   name
+  - uses: filter
+    with:
+      # Only mirror VERIFIED customers to the cache - matches the
+      # broker's compliance posture (no unverified accounts in hot path).
+      expression: kyc_status == 'VERIFIED'
+      language:   jmespath
+
+output:
+  # 1) Primary cache - the JSON document the trading app reads.
+  - uses: redis.write
+    with:
+      connection: target
+      data_type: json
+      key:
+        expression: concat(['customer:', client_code])
+        language: jmespath
+      args:
+        path: $
+
+  # 2) Per-segment membership SET on the same target BDB. Lets the
+  #    RM/branch dashboards do `SCARD cust-segment:HNI` or
+  #    `SRANDMEMBER cust-segment:RETAIL 10` without any join. RDI
+  #    populates and depopulates the set as KYC status / segment
+  #    change in the source.
+  - uses: redis.write
+    with:
+      connection: target
+      data_type: set
+      key:
+        expression: concat(['cust-segment:', segment])
+        language: jmespath
+      member:
+        expression: client_code
+        language: jmespath

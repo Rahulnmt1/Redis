@@ -1,0 +1,52 @@
+---
+description: Mock RDI control-plane API must mirror the official /api/v1/ surface and never invent endpoints
+globs: mock-rdi-api/**/*.py
+alwaysApply: false
+---
+
+# Mock RDI API Conformance
+
+The mock at `mock-rdi-api/app.py` exists to let Redis Insight's RDI tab
+work against the local demo. It MUST NOT diverge from the real RDI
+control-plane API.
+
+## The rule
+
+Every route exposed by this mock must correspond to a real operation in
+<https://redis.io/docs/latest/integrate/redis-data-integration/reference/api-reference/>.
+
+If you cannot find a documented operation for a route, **do not add
+it** — Insight will not call it in production anyway, and shipping
+mock-only endpoints creates false expectations.
+
+## Allowed surface (already implemented)
+
+| Method | Path | Operation in docs |
+|---|---|---|
+| POST | `/api/v1/login` | `secure_login_api_v1_login_post` |
+| GET | `/api/v1/status` | `get_pipeline_status_api_v1_status_get` |
+| GET | `/api/v1/pipelines` | `get_pipeline_api_v1_pipelines_get` |
+| POST | `/api/v1/pipelines` | `deploy_pipeline_api_v1_pipelines_post` |
+| POST | `/api/v1/pipelines/{start,stop,reset}` | lifecycle ops |
+| GET | `/api/v1/actions/<id>` | `get_action_api_v1_actions_action_id_get` |
+| POST | `/api/v1/pipelines/jobs/dry-run` | `job_dry_run_api_v1_pipelines_jobs_dry_run_post` |
+| POST | `/api/v1/pipelines/{targets,sources}/dry-run` | connection test |
+| GET | `/api/v1/monitoring/statistics` | analytics |
+| GET | `/api/v1/pipelines/{config,jobs}/schemas` | schema for editor |
+| GET | `/api/v1/pipelines/strategies` | deployment strategies |
+| GET | `/api/v1/pipelines/{config,jobs}/templates/<...>` | starter templates |
+| GET | `/api/v1/pipelines/jobs/functions` | JMESPath/SQL function catalog |
+
+## Auth + response contract
+
+- All non-login endpoints must require `Authorization: Bearer <JWT>` (matches the real API's `secure` tag).
+- Async lifecycle operations (`/start`, `/stop`, `/reset`, `/pipelines` POST) must return `{ "action_id": "<uuid>" }` immediately, with status polled via `/api/v1/actions/<id>`.
+- Schema endpoints must return valid JSON Schema documents that match the YAML keys actually used by `rdi/config.yaml` and `rdi/jobs/*.yaml`.
+
+## After editing
+
+1. Run the endpoint smoke test from `docs/05-rdi-spec-conformance.md`
+   §4 — every route should return 200 with a valid JWT.
+2. Update `docs/05-rdi-spec-conformance.md` if the route table changed.
+3. Re-run `./scripts/verify-redis-enterprise.sh` and confirm
+   §8 (RDI control-plane API) still passes.

@@ -1,0 +1,864 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>the firm · Live Portfolio · powered by Redis Enterprise + RDI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#091A23">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   Redis brand tokens — brand.redis.io
+   Red         #FF4438  primary brand
+   Dusk        #163341  deep teal (cards / surface)
+   Charcoal    #091A23  background
+   Hyper       #7FE3DA  cyan accent
+   Yellow      #DCFF1E  highlight accent
+   Sand        #F9F7F4  text on dark
+   ============================================================ */
+:root{
+  --redis-red:#FF4438;
+  --redis-red-strong:#E03B30;
+  --redis-dusk:#163341;
+  --redis-charcoal:#091A23;
+  --redis-hyper:#7FE3DA;
+  --redis-yellow:#DCFF1E;
+  --redis-sand:#F9F7F4;
+
+  --bg:var(--redis-charcoal);
+  --surface-1:#0F2630;
+  --surface-2:#163341;
+  --surface-3:#1D4252;
+  --line:rgba(255,255,255,0.08);
+  --line-strong:rgba(255,255,255,0.16);
+
+  --text:var(--redis-sand);
+  --muted:#8FA2AE;
+  --muted-2:#637782;
+
+  --gain:#80F0AC;       /* finance up — keeps brand-adjacent green */
+  --gain-bg:rgba(128,240,172,0.10);
+  --loss:var(--redis-red);
+  --loss-bg:rgba(255,68,56,0.10);
+
+  --shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 8px 24px rgba(0,0,0,.25);
+  --radius:12px;
+  --radius-sm:8px;
+
+  --font-display:'Space Grotesk', 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --font-body:'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --font-mono:'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+/* ---- reset ----------------------------------------------------- */
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+html{
+  background:var(--bg);
+  color:var(--text);
+  -webkit-text-size-adjust:100%;
+}
+body{
+  font-family:var(--font-body);
+  font-size:14px;
+  line-height:1.5;
+  min-height:100vh;
+  min-height:100dvh;
+  overflow-x:hidden;
+  font-feature-settings:"cv11","ss01","tnum"; /* tabular numbers */
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(255,68,56,0.10), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(127,227,218,0.08), transparent 60%),
+    var(--bg);
+}
+h1,h2,h3,h4,h5,h6{font-family:var(--font-display);font-weight:600;letter-spacing:-0.01em;margin:0}
+button{font:inherit;color:inherit}
+code,kbd{font-family:var(--font-mono);font-size:0.92em}
+
+/* ---- header ---------------------------------------------------- */
+.topbar{
+  position:sticky;top:0;z-index:20;
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:14px clamp(16px, 3vw, 28px);
+  background:rgba(9,26,35,0.82);
+  backdrop-filter:saturate(140%) blur(8px);
+  -webkit-backdrop-filter:saturate(140%) blur(8px);
+  border-bottom:1px solid var(--line);
+}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand-mark{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:30px;padding:0 12px;
+  background:var(--redis-red);color:#fff;
+  border-radius:999px;
+  font-family:var(--font-display);font-weight:700;font-size:14px;
+  letter-spacing:0.02em;
+  box-shadow:0 4px 10px rgba(255,68,56,0.35);
+}
+.brand-mark::before{
+  content:"";display:inline-block;width:8px;height:8px;margin-right:8px;
+  background:#fff;border-radius:50%;
+}
+.cobrand{
+  font-family:var(--font-display);font-weight:700;font-size:17px;
+  white-space:nowrap;
+}
+.cobrand b{color:var(--redis-red)}
+.crumbs{
+  display:flex;flex-wrap:wrap;gap:6px;min-width:0;
+}
+.crumb{
+  font-size:12px;color:var(--muted);
+  padding:4px 10px;border:1px solid var(--line);border-radius:999px;
+  white-space:nowrap;
+  background:rgba(255,255,255,0.02);
+}
+.crumb b{color:var(--text);font-weight:600}
+.live{
+  margin-left:auto;display:inline-flex;align-items:center;gap:8px;
+  font-size:12px;color:var(--muted);
+  padding:6px 12px;border:1px solid var(--line);border-radius:999px;
+  background:rgba(128,240,172,0.06);
+  white-space:nowrap;
+}
+.live .dot{
+  width:8px;height:8px;border-radius:50%;background:var(--gain);
+  box-shadow:0 0 0 0 rgba(128,240,172,.6);
+  animation:pulse 1.6s ease-out infinite;
+}
+@keyframes pulse{
+  0%  {box-shadow:0 0 0 0 rgba(128,240,172,.55)}
+  70% {box-shadow:0 0 0 10px rgba(128,240,172,0)}
+  100%{box-shadow:0 0 0 0 rgba(128,240,172,0)}
+}
+
+/* ---- layout ---------------------------------------------------- */
+.shell{
+  display:grid;
+  grid-template-columns: clamp(220px, 22vw, 300px) minmax(0, 1fr);
+  min-height:calc(100vh - 60px);
+}
+.sidebar{
+  border-right:1px solid var(--line);
+  padding:18px 16px;
+  background:rgba(15,38,48,0.6);
+  min-width:0;
+}
+.sidebar h3{
+  font-family:var(--font-display);
+  font-size:11px;text-transform:uppercase;letter-spacing:0.14em;
+  color:var(--muted);margin:0 0 10px;font-weight:600;
+}
+.search{margin-bottom:10px}
+.search input{
+  width:100%;
+  background:var(--surface-2);
+  color:var(--text);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:8px 12px;
+  font:500 13px/1.4 var(--font-body);
+  outline:none;
+  transition:border-color .15s, box-shadow .15s;
+}
+.search input::placeholder{color:var(--muted-2)}
+.search input:focus{
+  border-color:var(--redis-red);
+  box-shadow:0 0 0 3px rgba(255,68,56,0.18);
+}
+.cust-meta-row{
+  display:flex;justify-content:space-between;align-items:baseline;
+  gap:6px;margin-bottom:10px;
+  font-family:var(--font-display);
+  font-size:11px;color:var(--muted);
+  text-transform:uppercase;letter-spacing:0.1em;
+}
+.muted-mono{font-family:var(--font-mono);font-size:10.5px;color:var(--muted-2);text-transform:none;letter-spacing:0}
+.cust-list{display:flex;flex-direction:column;gap:4px;max-height:calc(100vh - 260px);overflow-y:auto;padding-right:2px}
+.cust-list::-webkit-scrollbar{width:6px}
+.cust-list::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:3px}
+.cust{
+  padding:10px 12px;border-radius:var(--radius-sm);cursor:pointer;
+  border:1px solid transparent;
+  transition:background .15s, border-color .15s, transform .12s;
+  min-width:0;
+}
+.cust:hover{background:rgba(255,255,255,0.03)}
+.cust.active{
+  background:linear-gradient(180deg, rgba(255,68,56,0.10), rgba(255,68,56,0.03));
+  border-color:rgba(255,68,56,0.55);
+}
+.cust:focus-visible{outline:2px solid var(--redis-hyper);outline-offset:2px}
+.cust .name{font-weight:600;font-size:14px;color:var(--text);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cust .meta{
+  display:flex;flex-wrap:wrap;gap:4px;
+  font-size:11px;color:var(--muted-2);margin-top:4px;
+}
+.badge{
+  font-family:var(--font-mono);font-size:10px;letter-spacing:0.04em;
+  padding:2px 6px;border-radius:4px;
+  background:rgba(255,255,255,0.06);color:var(--muted);
+}
+.badge.hni  {background:rgba(220,255,30,0.10);color:var(--redis-yellow)}
+.badge.uhni {background:rgba(255,68,56,0.14); color:#ffb1ab}
+.badge.nri  {background:rgba(127,227,218,0.12);color:var(--redis-hyper)}
+
+/* ---- main ------------------------------------------------------ */
+main{
+  padding:clamp(16px, 2vw, 24px) clamp(16px, 3vw, 28px) 32px;
+  min-width:0;
+}
+.page-head{margin-bottom:18px;min-width:0}
+.page-head h1{
+  font-size:clamp(20px, 2.2vw, 26px);font-weight:600;
+  color:var(--text);
+  margin:0 0 4px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.page-head .sub{
+  font-size:13px;color:var(--muted);
+  display:flex;flex-wrap:wrap;gap:6px 16px;
+}
+.page-head .sub span:not(:last-child)::after{
+  content:"·";margin-left:16px;color:var(--muted-2);
+}
+
+/* KPIs — auto-fit so they wrap cleanly */
+.kpis{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(170px, 1fr));
+  gap:12px;margin-bottom:18px;
+}
+.kpi{
+  background:linear-gradient(180deg, var(--surface-1), rgba(15,38,48,0.6));
+  border:1px solid var(--line);border-radius:var(--radius);
+  padding:14px 16px;min-width:0;box-shadow:var(--shadow);
+}
+.kpi h5{
+  font-family:var(--font-display);
+  font-size:11px;text-transform:uppercase;letter-spacing:0.14em;
+  color:var(--muted);margin:0;font-weight:600;
+}
+.kpi .v{
+  font-family:var(--font-display);font-weight:600;
+  font-size:clamp(20px, 2vw, 24px);
+  margin-top:6px;letter-spacing:-0.01em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.kpi .sub{font-size:11.5px;color:var(--muted-2);margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gain{color:var(--gain)}
+.loss{color:var(--loss)}
+
+/* row: holdings (wide) | right rail */
+.row{
+  display:grid;
+  grid-template-columns:minmax(0, 2.2fr) minmax(0, 1fr);
+  gap:14px;
+}
+@media (max-width:1100px){
+  .row{grid-template-columns:minmax(0, 1fr)}
+}
+@media (max-width:760px){
+  .shell{grid-template-columns:1fr}
+  .sidebar{border-right:none;border-bottom:1px solid var(--line)}
+}
+
+/* panels */
+.panel{
+  background:var(--surface-1);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  padding:14px 16px;
+  margin-bottom:14px;
+  min-width:0;
+  box-shadow:var(--shadow);
+}
+.panel h4{
+  font-family:var(--font-display);
+  margin:0 0 12px;
+  font-size:12px;text-transform:uppercase;letter-spacing:0.14em;
+  color:var(--muted);font-weight:600;
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+}
+.panel h4 .title-wrap{
+  display:flex;align-items:center;gap:8px;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.btn{
+  background:transparent;border:1px solid var(--line);
+  color:var(--muted);
+  padding:4px 10px;border-radius:999px;cursor:pointer;
+  font-size:11px;font-weight:500;letter-spacing:0.02em;
+  transition:color .15s, border-color .15s, background .15s;
+}
+.btn:hover{color:var(--text);border-color:var(--redis-red);background:rgba(255,68,56,0.06)}
+.btn:focus-visible{outline:2px solid var(--redis-hyper);outline-offset:2px}
+
+/* holdings table — overflow contained */
+.table-wrap{
+  overflow-x:auto;
+  margin:0 -2px;
+  scrollbar-width:thin;
+  scrollbar-color:var(--surface-3) transparent;
+}
+.table-wrap::-webkit-scrollbar{height:8px}
+.table-wrap::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:4px}
+table.holdings{
+  width:100%;border-collapse:collapse;
+  font-size:13px;font-variant-numeric:tabular-nums;
+  min-width:720px;
+}
+table.holdings th,
+table.holdings td{
+  padding:9px 10px;text-align:left;
+  border-bottom:1px solid var(--line);
+}
+table.holdings th{
+  font-family:var(--font-display);
+  font-size:11px;text-transform:uppercase;letter-spacing:0.12em;
+  color:var(--muted);font-weight:600;
+  background:rgba(255,255,255,0.02);
+  position:sticky;top:0;
+}
+table.holdings td.r,
+table.holdings th.r{text-align:right;white-space:nowrap}
+table.holdings tbody tr:hover td{background:rgba(255,255,255,0.025)}
+.symbol{font-weight:600;font-size:13px;color:var(--text)}
+.company{color:var(--muted-2);font-size:11px;font-weight:400;
+  max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.flash{animation:flash .9s ease-out}
+@keyframes flash{
+  0%   {background:rgba(255,68,56,0.18)}
+  100% {background:transparent}
+}
+
+/* latency comparison */
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:10px;text-align:center}
+.cmp .box{
+  background:var(--surface-2);
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);padding:14px 10px;min-width:0;
+}
+.cmp .box.fast{
+  border-color:rgba(127,227,218,0.45);
+  background:linear-gradient(180deg, rgba(127,227,218,0.08), var(--surface-2));
+}
+.cmp .lbl{
+  font-family:var(--font-display);
+  font-size:10.5px;text-transform:uppercase;letter-spacing:0.14em;
+  color:var(--muted);font-weight:600;margin-bottom:6px;
+}
+.cmp .ms{
+  font-family:var(--font-display);font-weight:700;
+  font-size:clamp(24px, 3vw, 32px);
+  letter-spacing:-0.02em;
+  font-variant-numeric:tabular-nums;
+}
+.cmp .src{font-size:11px;color:var(--muted-2);margin-top:4px}
+.speedup{
+  font-family:var(--font-display);
+  font-size:14px;font-weight:600;color:var(--redis-yellow);
+  margin-top:12px;text-align:center;letter-spacing:0.01em;
+}
+
+/* scale benchmark — 3 stacked rows showing the three lookup strategies */
+.scale-meta{
+  display:flex;justify-content:space-between;align-items:baseline;
+  font-size:11.5px;color:var(--muted);
+  font-family:var(--font-display);text-transform:uppercase;letter-spacing:0.1em;
+  margin:-2px 0 10px;
+}
+.scale-meta b{color:var(--redis-hyper);font-family:var(--font-mono);
+  font-size:12px;letter-spacing:0;text-transform:none}
+.bench-row{
+  display:grid;grid-template-columns:1fr auto;gap:8px;
+  align-items:baseline;
+  padding:8px 0;border-bottom:1px solid var(--line);
+}
+.bench-row:last-child{border-bottom:none}
+.bench-row .lbl{font-size:12px;color:var(--text);min-width:0}
+.bench-row .lbl small{color:var(--muted-2);font-size:11px;display:block;margin-top:1px}
+.bench-row .ms{
+  font-family:var(--font-display);font-weight:700;
+  font-size:18px;font-variant-numeric:tabular-nums;
+  letter-spacing:-0.01em;color:var(--text);
+  white-space:nowrap;
+}
+.bench-row.winner .ms{color:var(--redis-hyper)}
+.bench-row.loser  .ms{color:var(--redis-red)}
+.bench-x{
+  margin-top:10px;text-align:center;
+  font-family:var(--font-display);font-weight:700;font-size:18px;
+  color:var(--redis-yellow);letter-spacing:0.01em;
+}
+.bench-x small{display:block;color:var(--muted-2);font-weight:500;font-size:11px;
+  letter-spacing:0.06em;text-transform:uppercase;margin-top:2px}
+.scale-subhead{
+  margin:14px 0 4px;
+  font-family:var(--font-display);font-size:10.5px;
+  color:var(--muted);text-transform:uppercase;letter-spacing:0.12em;
+  padding-bottom:6px;border-bottom:1px solid var(--line);
+}
+
+/* pipeline + stream rows */
+.pipe-row, .stream-row{
+  display:flex;justify-content:space-between;align-items:baseline;
+  gap:10px;padding:8px 0;border-bottom:1px solid var(--line);
+  font-size:12.5px;min-width:0;
+}
+.pipe-row:last-child, .stream-row:last-child{border-bottom:none}
+.pipe-row .k{
+  font-family:var(--font-mono);color:var(--text);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.pipe-row .v{
+  font-family:var(--font-mono);color:var(--redis-hyper);
+  font-weight:600;white-space:nowrap;
+}
+.stream-row .line{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stream-row .side-BUY{color:var(--gain);font-weight:600}
+.stream-row .side-SELL{color:var(--loss);font-weight:600}
+.stream-row .sid{
+  display:block;color:var(--muted-2);
+  font-family:var(--font-mono);font-size:10.5px;margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+
+.empty{padding:24px 8px;text-align:center;color:var(--muted-2);font-size:13px}
+
+/* explainer panel */
+.explain{
+  font-size:12.5px;color:var(--muted);line-height:1.6;
+}
+.explain b{color:var(--text);font-weight:600}
+.explain code{
+  background:rgba(255,255,255,0.06);
+  padding:1px 6px;border-radius:4px;color:var(--redis-hyper);
+}
+.explain a{color:var(--redis-hyper);text-decoration:none}
+.explain a:hover{text-decoration:underline}
+
+/* footer */
+.footer{
+  border-top:1px solid var(--line);
+  padding:14px clamp(16px, 3vw, 28px);
+  font-size:11.5px;color:var(--muted-2);
+  display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:space-between;align-items:center;
+}
+.footer a{color:var(--muted);text-decoration:none}
+.footer a:hover{color:var(--text)}
+
+/* utility */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+</style>
+</head>
+<body>
+
+<header class="topbar" role="banner">
+  <div class="brand">
+    <span class="brand-mark" aria-label="Redis">redis</span>
+    <span class="cobrand">the firm</span>
+  </div>
+  <div class="crumbs" aria-label="Stack">
+    <span class="crumb">Source · <b>PostgreSQL</b> <span style="color:var(--muted-2)">(Oracle in prod)</span></span>
+    <span class="crumb">Pipeline · <b>Redis Data Integration</b></span>
+    <span class="crumb">Cache · <b>Redis Enterprise</b></span>
+  </div>
+  <div class="live" aria-live="polite"><span class="dot"></span>RDI pipeline streaming</div>
+</header>
+
+<div class="shell">
+
+  <aside class="sidebar" aria-label="Customer list">
+    <h3>Customers</h3>
+    <div class="search">
+      <input id="cust-q" type="search" autocomplete="off"
+             placeholder="Search PAN, name or client code…"
+             aria-label="Search customers" />
+    </div>
+    <div id="cust-meta-row" class="cust-meta-row" aria-live="polite">
+      <span id="cust-total">—</span>
+      <span id="cust-search-ms" class="muted-mono">—</span>
+    </div>
+    <div id="customers" class="cust-list" role="listbox" aria-label="Select a customer"></div>
+  </aside>
+
+  <main>
+    <div class="page-head">
+      <h1 id="cust-name">Select a customer</h1>
+      <div class="sub" id="cust-meta"></div>
+    </div>
+
+    <section class="kpis" aria-label="Portfolio key metrics">
+      <div class="kpi"><h5>Invested</h5><div class="v" id="kpi-invested">--</div><div class="sub">cost basis</div></div>
+      <div class="kpi"><h5>Market value</h5><div class="v" id="kpi-market">--</div><div class="sub">mark-to-market</div></div>
+      <div class="kpi"><h5>Net P&amp;L</h5><div class="v" id="kpi-pnl">--</div><div class="sub" id="kpi-pnl-pct">--</div></div>
+      <div class="kpi"><h5>Holdings</h5><div class="v" id="kpi-count">--</div><div class="sub">scripts</div></div>
+      <div class="kpi"><h5>Refresh</h5><div class="v" id="kpi-refresh">--</div><div class="sub">Redis fetch (ms)</div></div>
+    </section>
+
+    <div class="row">
+      <div>
+        <section class="panel">
+          <h4>
+            <span class="title-wrap">Holdings <span style="color:var(--muted-2);font-weight:400;letter-spacing:0">· live from Redis Enterprise</span></span>
+            <button class="btn" onclick="loadPortfolio()">Refresh</button>
+          </h4>
+          <div class="table-wrap">
+            <table class="holdings">
+              <thead><tr>
+                <th>Symbol</th>
+                <th class="r">Qty</th>
+                <th class="r">Avg Buy</th>
+                <th class="r">LTP</th>
+                <th class="r">Day %</th>
+                <th class="r">Invested</th>
+                <th class="r">Market</th>
+                <th class="r">P&amp;L</th>
+                <th class="r">P&amp;L %</th>
+              </tr></thead>
+              <tbody id="holdings-body">
+                <tr><td colspan="9" class="empty">Pick a customer to load their live portfolio.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h4>
+            <span class="title-wrap">Recent trade stream · <code>trades:<span id="cust-id">-</span></code></span>
+          </h4>
+          <div id="trade-stream"><div class="empty">No trades streamed yet.</div></div>
+        </section>
+      </div>
+
+      <div>
+        <section class="panel">
+          <h4>
+            <span class="title-wrap">Portfolio latency · Postgres vs Redis</span>
+            <button class="btn" onclick="runLatency()">Run again</button>
+          </h4>
+          <div class="cmp">
+            <div class="box">
+              <div class="lbl">PostgreSQL</div>
+              <div class="ms" id="pg-ms">--</div>
+              <div class="src">system of record</div>
+            </div>
+            <div class="box fast">
+              <div class="lbl">Redis Enterprise</div>
+              <div class="ms" id="rd-ms">--</div>
+              <div class="src">RDI-fed cache</div>
+            </div>
+          </div>
+          <div class="speedup" id="speedup">Run query to compare</div>
+        </section>
+
+        <section class="panel" id="scale-panel">
+          <h4>
+            <span class="title-wrap">Scale benchmark · find one in N</span>
+            <button class="btn" onclick="runScaleBenchmark()">Run again</button>
+          </h4>
+          <div class="scale-meta">
+            <span>Across <b id="scale-total">—</b> customers</span>
+            <span class="muted-mono" id="scale-pan">—</span>
+          </div>
+
+          <div class="scale-subhead">A · exact PAN lookup (both sides indexed)</div>
+          <div class="bench-row">
+            <div class="lbl">PostgreSQL <small>btree index on <code>pan</code></small></div>
+            <div class="ms" id="bench-pg-pan">— ms</div>
+          </div>
+          <div class="bench-row">
+            <div class="lbl">Redis · FT.SEARCH <small><code>@pan:{…}</code> tag</small></div>
+            <div class="ms" id="bench-ft-pan">— ms</div>
+          </div>
+          <div class="bench-row">
+            <div class="lbl">Redis · JSON.GET <small>direct key</small></div>
+            <div class="ms" id="bench-direct">— ms</div>
+          </div>
+
+          <div class="scale-subhead">B · COUNT(*) WHERE name LIKE 'Raj%' (no GIN in OLTP)</div>
+          <div class="bench-row loser">
+            <div class="lbl">PostgreSQL <small><code>COUNT(*) WHERE full_name ILIKE 'Raj%'</code> → seq scan</small></div>
+            <div class="ms" id="bench-pg-pfx">— ms</div>
+          </div>
+          <div class="bench-row winner">
+            <div class="lbl">Redis · FT.SEARCH <small><code>@name:raj* LIMIT 0 0</code> → inverted index</small></div>
+            <div class="ms" id="bench-ft-pfx">— ms</div>
+          </div>
+
+          <div class="bench-x" id="bench-x">
+            <span>—</span>
+            <small>Redis vs Postgres on name-prefix at scale</small>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h4>
+            <span class="title-wrap">RDI pipeline streams</span>
+            <button class="btn" onclick="loadPipeline()">Refresh</button>
+          </h4>
+          <div id="pipeline"></div>
+        </section>
+
+        <section class="panel">
+          <h4><span class="title-wrap">Why this works</span></h4>
+          <div class="explain">
+            Every row above is read from Redis Enterprise &mdash; <b>never</b> from Postgres.
+            RDI continuously captures inserts and updates from the system of record
+            and applies the transformations defined in <code>rdi/jobs/*.yaml</code>
+            to keep this cache fresh.
+            <br><br>
+            Place an order in Postgres and watch the holding, trade stream
+            and KPIs refresh on this screen in &lt; 1 second.
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+
+<footer class="footer">
+  <span>Demo for Securities & Trading Firm · <a href="https://redis.io/docs/latest/integrate/redis-data-integration/" target="_blank" rel="noopener">redis.io / Redis Data Integration</a></span>
+  <span>UI follows <a href="https://brand.redis.io/" target="_blank" rel="noopener">Redis brand guidelines</a></span>
+</footer>
+
+<script>
+"use strict";
+
+const $  = (s,r=document) => r.querySelector(s);
+const $$ = (s,r=document) => [...r.querySelectorAll(s)];
+
+const fmt = n => "₹" + Number(n).toLocaleString("en-IN", {maximumFractionDigits:2});
+const pct = n => (n>=0?"+":"") + Number(n).toFixed(2) + "%";
+
+let active = null;
+let _searchDebounce = null;
+
+const nfmt = n => Number(n).toLocaleString("en-IN");
+
+async function loadCustomers(query){
+  try{
+    const url = "/api/customer-search?limit=25" + (query ? `&q=${encodeURIComponent(query)}` : "");
+    const res = await fetch(url);
+    const data = await res.json();
+    const list = data.results || [];
+
+    $("#cust-total").textContent = `${nfmt(data.shown)} of ${nfmt(data.total)} ${data.ft_enabled ? "indexed" : ""}`;
+    $("#cust-search-ms").textContent = (data.ft_enabled ? "FT.SEARCH " : "") + data.search_ms + " ms";
+
+    const root = $("#customers");
+    root.innerHTML = "";
+    if(!list.length){
+      root.innerHTML = `<div class="empty">No matches.</div>`;
+      return;
+    }
+    list.forEach(c => {
+      const seg = (c.segment || "RETAIL").toLowerCase();
+      const el = document.createElement("div");
+      el.className = "cust";
+      el.dataset.code = c.client_code;
+      el.tabIndex = 0;
+      el.setAttribute("role","option");
+      el.innerHTML = `
+        <div class="name">${c.name || c.full_name || ""}</div>
+        <div class="meta">
+          <span class="badge" title="Client code">${c.client_code || ""}</span>
+          <span class="badge ${seg}">${c.segment || ""}</span>
+          <span class="badge">${c.risk_profile || ""}</span>
+        </div>`;
+      el.onclick = () => selectCustomer(c);
+      el.onkeydown = e => { if(e.key==="Enter" || e.key===" "){e.preventDefault(); selectCustomer(c);} };
+      root.appendChild(el);
+    });
+    // keep currently-active highlighted, otherwise pick the first
+    const keepActive = active && list.some(c => c.client_code === active.client_code);
+    if(!keepActive) selectCustomer(list[0]);
+    else $$(".cust").forEach(el => el.classList.toggle("active", el.dataset.code === active.client_code));
+  }catch(e){
+    $("#customers").innerHTML = `<div class="empty">Could not load customers.<br>Is the stack up?</div>`;
+  }
+}
+
+function hookSearch(){
+  const input = $("#cust-q");
+  if(!input) return;
+  input.addEventListener("input", e => {
+    clearTimeout(_searchDebounce);
+    const q = e.target.value;
+    _searchDebounce = setTimeout(() => loadCustomers(q), 180);
+  });
+}
+
+function selectCustomer(c){
+  active = c;
+  $$(".cust").forEach(el => el.classList.toggle("active", el.dataset.code === c.client_code));
+  $("#cust-name").textContent = c.name || c.full_name || c.client_code;
+  $("#cust-meta").innerHTML = [
+    c.client_code   ? `<span>${c.client_code}</span>` : "",
+    c.pan           ? `<span>PAN ${c.pan}</span>` : "",
+    c.segment       ? `<span>${c.segment}</span>` : "",
+    c.risk_profile  ? `<span>${c.risk_profile}</span>` : "",
+    c.demat_account ? `<span>Demat ${c.demat_account}</span>` : "",
+  ].filter(Boolean).join("");
+  $("#cust-id").textContent = c.customer_id;
+  loadPortfolio(); runLatency(); loadStream();
+}
+
+async function loadPortfolio(){
+  if(!active) return;
+  const t0 = performance.now();
+  let data;
+  try{
+    const res = await fetch(`/api/portfolio/${active.client_code}`);
+    data = await res.json();
+  }catch(e){
+    $("#holdings-body").innerHTML = `<tr><td colspan="9" class="empty">Could not reach Redis Enterprise.</td></tr>`;
+    return;
+  }
+  const ms = (performance.now() - t0).toFixed(1);
+  const s = data.summary || {};
+
+  $("#kpi-invested").textContent = fmt(s.invested || 0);
+  $("#kpi-market").textContent   = fmt(s.market_value || 0);
+
+  const pnlEl = $("#kpi-pnl");
+  pnlEl.textContent = fmt(s.pnl || 0);
+  pnlEl.className = "v " + ((s.pnl||0) >= 0 ? "gain" : "loss");
+
+  const pnlPctEl = $("#kpi-pnl-pct");
+  pnlPctEl.textContent = pct(s.pnl_pct || 0);
+  pnlPctEl.className = "sub " + ((s.pnl_pct||0) >= 0 ? "gain" : "loss");
+
+  $("#kpi-count").textContent   = s.holding_count ?? 0;
+  $("#kpi-refresh").textContent = ms + " ms";
+
+  const tbody = $("#holdings-body");
+  if(!data.holdings || !data.holdings.length){
+    tbody.innerHTML = `<tr><td colspan="9" class="empty">No holdings for this customer yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = data.holdings.map(h => `
+    <tr>
+      <td>
+        <div class="symbol">${h.symbol || ""}</div>
+        <div class="company" title="${h.company || ""}">${h.company || ""}</div>
+      </td>
+      <td class="r">${h.quantity}</td>
+      <td class="r">${fmt(h.avg_buy_price)}</td>
+      <td class="r">${fmt(h.ltp)}</td>
+      <td class="r ${h.day_change_pct>=0?'gain':'loss'}">${pct(h.day_change_pct)}</td>
+      <td class="r">${fmt(h.invested)}</td>
+      <td class="r">${fmt(h.market)}</td>
+      <td class="r ${h.pnl>=0?'gain':'loss'}">${fmt(h.pnl)}</td>
+      <td class="r ${h.pnl_pct>=0?'gain':'loss'}">${pct(h.pnl_pct)}</td>
+    </tr>`).join("");
+}
+
+async function runLatency(){
+  if(!active) return;
+  try{
+    const res = await fetch(`/api/latency/${active.client_code}`);
+    const d = await res.json();
+    $("#pg-ms").textContent = d.postgres_ms + " ms";
+    $("#rd-ms").textContent = d.redis_ms + " ms";
+    $("#speedup").textContent = `Redis is ${d.speedup}× faster for this query`;
+  }catch(e){
+    $("#speedup").textContent = "Latency check unavailable";
+  }
+}
+
+async function loadPipeline(){
+  try{
+    const res = await fetch("/api/pipeline");
+    const d = await res.json();
+    const root = $("#pipeline");
+    const keys = Object.keys(d).filter(k => k !== "__error__");
+    if(!keys.length){
+      root.innerHTML = `<div class="empty">Waiting for Debezium streams…</div>`;
+      return;
+    }
+    root.innerHTML = keys.map(k =>
+      `<div class="pipe-row"><span class="k">${k}</span><span class="v">${Number(d[k]).toLocaleString()} events</span></div>`
+    ).join("");
+  }catch(e){
+    $("#pipeline").innerHTML = `<div class="empty">RDI state DB unreachable.</div>`;
+  }
+}
+
+async function loadStream(){
+  if(!active) return;
+  try{
+    const res = await fetch(`/api/recent-trades/${active.client_code}`);
+    const d = await res.json();
+    const root = $("#trade-stream");
+    if(!d.length){
+      root.innerHTML = `<div class="empty">No trades on this customer yet.</div>`;
+      return;
+    }
+    root.innerHTML = d.map(t => `
+      <div class="stream-row">
+        <div class="line">
+          <span class="side-${t.side}">${t.side}</span>
+          ${t.quantity} @ ${fmt(t.price)}
+          <span style="color:var(--muted-2)"> = ${fmt(t.trade_value)}</span>
+          <span class="sid">${t.stream_id} · ${t.executed_at}</span>
+        </div>
+      </div>`).join("");
+  }catch(e){
+    $("#trade-stream").innerHTML = `<div class="empty">Trade stream unreachable.</div>`;
+  }
+}
+
+async function runScaleBenchmark(){
+  const panEl = $("#scale-pan"), totalEl = $("#scale-total"), xEl = $("#bench-x");
+  const els = {
+    pgPan: $("#bench-pg-pan"), ftPan: $("#bench-ft-pan"),
+    direct: $("#bench-direct"),
+    pgPfx: $("#bench-pg-pfx"), ftPfx: $("#bench-ft-pfx"),
+  };
+  Object.values(els).forEach(el => el && (el.textContent = "running…"));
+  try{
+    const res = await fetch("/api/scale-benchmark?runs=5&prefix=Raj");
+    if(!res.ok){
+      const err = await res.json();
+      panEl.textContent = err.error || "not seeded";
+      Object.values(els).forEach(el => el && (el.textContent = "—"));
+      xEl.innerHTML = `<span>—</span><small>run scripts/seed-large-scale.sh first</small>`;
+      return;
+    }
+    const d = await res.json();
+    totalEl.textContent = nfmt(d.total_customers);
+    panEl.textContent = `PAN ${d.sample_pan}${d.sample_client ? " · " + d.sample_client : ""}`;
+
+    const fmt = b => b ? b.p50 + " ms" : "—";
+    els.pgPan.textContent  = fmt(d.pan_lookup.postgres);
+    els.ftPan.textContent  = fmt(d.pan_lookup.redis_ft_search);
+    els.direct.textContent = fmt(d.pan_lookup.redis_json_get);
+    els.pgPfx.textContent  = fmt(d.name_prefix.postgres);
+    els.ftPfx.textContent  = fmt(d.name_prefix.redis_ft_search);
+
+    const sp = d.name_prefix.speedup_ft;
+    xEl.innerHTML = sp
+      ? `<span>Redis is ${sp}× faster</span><small>name-prefix search · scan vs index</small>`
+      : `<span>—</span><small>need both sides to time</small>`;
+  }catch(e){
+    Object.values(els).forEach(el => el && (el.textContent = "error"));
+  }
+}
+
+hookSearch();
+loadCustomers();
+loadPipeline();
+runScaleBenchmark();
+setInterval(() => { loadPortfolio(); loadStream(); loadPipeline(); }, 2000);
+</script>
+</body>
+</html>

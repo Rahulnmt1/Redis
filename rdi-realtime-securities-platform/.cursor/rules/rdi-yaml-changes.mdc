@@ -1,0 +1,51 @@
+---
+description: Validate RDI pipeline YAML against the official config-yaml-reference and job-files docs before saving
+globs: rdi/**/*.yaml
+alwaysApply: false
+---
+
+# RDI YAML Conformance Checklist
+
+Before changing any file under `rdi/`, confirm the change exists in the
+official Redis docs. If a key, block, function, or data type is not
+documented, do not use it.
+
+## `rdi/config.yaml` checklist
+
+Schema: <https://redis.io/docs/latest/integrate/redis-data-integration/reference/config-yaml-reference/>
+
+- `sources.<id>.type` ∈ `cdc | external | flink | riotx`
+- `sources.<id>.connection.type` ∈ `mariadb | mysql | oracle | postgresql | sqlserver` (or `mongodb`, `spanner`, `snowflake` with their own connection schemas)
+- `sources.<id>.advanced.source.*` — must be a Debezium connector property (omit `debezium.source.` prefix)
+- `sources.<id>.advanced.sink.*` — must be a [Debezium Redis stream sink](https://debezium.io/documentation/reference/stable/operations/debezium-server.html#_redis_stream) property (omit `debezium.sink.` prefix)
+- `processors.*` — only spec-current keys; remove anything marked **DEPRECATED**
+- Secret references must use the documented names: `SOURCE_DB_USERNAME`, `SOURCE_DB_PASSWORD`, `TARGET_DB_USERNAME`, `TARGET_DB_PASSWORD`, plus the TLS variants
+
+Known deprecated keys — never re-introduce:
+
+- `processors.duration` → use `read_batch_timeout_ms`
+- `processors.on_failed_retry_interval` → remove (no effect)
+- `processors.dedup_strategy` → remove (only `ignore` supported)
+
+## `rdi/jobs/*.yaml` checklist
+
+Schema: <https://redis.io/docs/latest/integrate/redis-data-integration/data-pipelines/transform-examples/>
+
+- `source.{server_name, db, schema, table, row_format, case_insensitive}` — only these keys
+- `transform[].uses` must be a documented block from <https://redis.io/docs/latest/integrate/redis-data-integration/reference/data-transformation/>:
+  `filter`, `rename_field`, `add_field`, `remove_field`, `add_field_to_object`, `merge_fields`, …
+- `transform[].with.language` ∈ `jmespath | sql`
+- `output[].uses` = `redis.write` (only allowed value)
+- `output[].with.data_type` ∈ `hash | json | set | sorted_set | stream | string`
+- `output[].with.key.language` ∈ `jmespath | sql`
+- JMESPath functions in expressions must be in
+  <https://redis.io/docs/latest/integrate/redis-data-integration/reference/jmespath-custom-functions/>
+  or [JMESPath builtins](https://jmespath.org/proposals/functions.html)
+
+## After editing
+
+1. Update `docs/05-rdi-spec-conformance.md` if you added new constructs.
+2. If the reference processor in `rdi-processor/processor.py` does not
+   yet implement the construct, either add support or revert the YAML.
+3. Restart the processor: `docker compose restart rdi-processor`.
+4. Re-run `./scripts/verify-redis-enterprise.sh` and confirm all checks pass.

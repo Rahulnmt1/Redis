@@ -1,0 +1,78 @@
+# =====================================================================
+# RDI Pipeline Configuration - Securities & Trading Firm Portfolio Cache
+#
+# This is the ONE file an the firm engineer would edit to manage the
+# pipeline in production. Source connection details, target details,
+# and processor tuning all live here. Transformations live in jobs/.
+#
+# When deployed via Redis Insight or `redis-di deploy`, RDI validates
+# this file, generates the Debezium config under the hood, and starts
+# the pipeline.
+# =====================================================================
+
+sources:
+  sectrade-portfolio:
+    type: cdc
+    logging:
+      level: info
+    connection:
+      type: postgresql
+      host: postgres
+      port: 5432
+      database: sectrade
+      user: ${SOURCE_DB_USERNAME}            # injected from RDI secrets
+      password: ${SOURCE_DB_PASSWORD}        # injected from RDI secrets
+    # Capture only what the broker app actually reads from the cache.
+    # In real life this is how you minimise license cost and CDC load.
+    schemas:
+      - portfolio
+    tables:
+      portfolio.customer:        {}
+      portfolio.security_master: {}
+      portfolio.holding:         {}
+      portfolio.trade:           {}
+      portfolio.market_price:    {}
+    advanced:
+      source:
+        plugin.name: pgoutput
+        publication.name: rdi_publication
+        publication.autocreate.mode: filtered
+        snapshot.mode: initial
+      sink:
+        # Production setting: throttle if Redis Enterprise lags
+        redis.memory.limit.mb: 300
+        redis.memory.threshold.percentage: 85
+
+targets:
+  # The default target is the Redis Enterprise database that the
+  # the firm trading and portfolio-view apps will query.
+  target:
+    connection:
+      type: redis
+      host: redis-enterprise
+      port: 12000
+      # user: ${TARGET_DB_USERNAME}
+      password: ${TARGET_DB_PASSWORD}
+
+processors:
+  # All keys below match the official RDI config-yaml schema:
+  # https://redis.io/docs/latest/integrate/redis-data-integration/reference/config-yaml-reference/#processors
+
+  # ----- Throughput tuning (defaults shown for clarity) ---------------
+  read_batch_size: 2000           # records pulled per micro-batch
+  read_batch_timeout_ms: 100      # max time (ms) to wait for a batch to fill
+  write_batch_size: 200           # records flushed to target per write
+  initial_sync_processes: 4       # parallel workers during initial snapshot (1-32)
+
+  # ----- Reliability --------------------------------------------------
+  error_handling: dlq             # ignore | dlq -- dead-letter-queue rejected records
+  dlq_max_messages: 1000
+  retry_max_attempts: 5           # write retries before giving up
+  retry_initial_delay_ms: 1000
+  retry_max_delay_ms: 10000
+
+  # ----- Default representation --------------------------------------
+  # Per-table overrides live in the jobs/ folder.
+  target_data_type: json          # hash | json
+  json_update_strategy: merge     # replace | merge
+  use_native_json_merge: true     # native JSON.MERGE (RedisJSON 2.6+, 2x faster)
