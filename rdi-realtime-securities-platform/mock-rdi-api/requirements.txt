@@ -1,4 +1,0 @@
-Flask==3.0.3
-redis==5.0.7
-PyYAML==6.0.2
-PyJWT==2.9.0
